@@ -5,85 +5,167 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GLOWE // GloweAPI</title>
     <style>
-        body { background: #060913; color: #fff; font-family: sans-serif; text-align: center; padding: 20px; }
-        header { border-bottom: 2px solid #00f3ff; padding: 10px; font-size: 20px; font-weight: bold; color: #00f3ff; }
-        .card { background: #0b1120; border: 1px solid #1e293b; border-radius: 8px; padding: 20px; max-width: 400px; margin: 40px auto; text-align: left; }
-        .hidden { display: none !important; }
-        h2 { color: #00f3ff; margin-top: 0; font-size: 18px; }
-        input { background: #060913; border: 1px solid #1e293b; padding: 10px; border-radius: 4px; color: #fff; width: 100%; box-sizing: border-box; margin: 10px 0; outline: none; }
-        input:focus { border-color: #00f3ff; }
-        .btn { background: linear-gradient(135deg, #00f3ff, #0055ff); border: none; padding: 12px; border-radius: 4px; font-weight: bold; cursor: pointer; width: 100%; }
-        .link { text-align: center; margin-top: 15px; font-size: 13px; color: #8892b0; cursor: pointer; text-decoration: underline; }
-        .error { color: #ff3333; font-size: 12px; font-weight: bold; }
+        body { background: #0e0e0e; color: #00ff00; font-family: monospace; padding: 20px; }
+        .hidden { display: none; }
+        .error { color: #ff3333; margin: 10px 0; }
+        .success { color: #00ff00; margin: 10px 0; }
+        .form-group { margin-bottom: 10px; }
+        input, button { background: #1a1a1a; color: #00ff00; border: 1px solid #00ff00; padding: 8px 12px; margin: 5px 0; width: 280px; font-family: monospace; }
+        button { cursor: pointer; width: auto; background: #003300; }
+        button:hover { background: #005500; }
+        .share-box { background: #111; border: 1px dashed #00ff00; padding: 15px; margin-top: 20px; max-width: 500px; }
+        .url-output { width: 100%; background: #000; border: 1px solid #333; padding: 5px; color: #ffff00; font-size: 12px; word-break: break-all; }
     </style>
 </head>
 <body>
 
-    <header>GLOWE // GloweAPI v1.0</header>
-
-    <!-- ЭКРАН 1: ВХОД -->
-    <div class="card" id="box-login">
-        <h2>Вход в терминал</h2>
-        <input type="text" id="log-user" placeholder="Никнейм">
-        <input type="password" id="log-pass" placeholder="Пароль">
-        <button class="btn" onclick="alert('GloweAPI: Успешный вход!')">Войти</button>
-        <div class="link" onclick="toggleScreen(0)">Впервые на GLOWE? Создать аккаунт</div>
+    <!-- 1. ЭКРАН АВТОРИЗАЦИИ (Показывается изначально) -->
+    <div id="login-screen">
+        <h2>GLOWE // GloweAPI v1.0</h2>
+        <h3>Вход в терминал</h3>
+        <p id="error-msg" class="error hidden">❌ Доступ запрещен: ссылка устарела (прошло >24ч) или токены не совпадают!</p>
+        
+        <div class="form-group">
+            <input type="text" id="user-id" placeholder="ID пользователя">
+        </div>
+        <div class="form-group">
+            <input type="password" id="user-password" placeholder="Постоянный пароль">
+        </div>
+        <div class="form-group">
+            <input type="text" id="link-ts" class="hidden"> <!-- Скрытое поле для времени из ссылки -->
+            <input type="text" id="user-token" placeholder="Токен безопасности (из ссылки)" readonly style="opacity: 0.6;">
+        </div>
+        <button onclick="checkAccess()">Войти в систему</button>
     </div>
 
-    <!-- ЭКРАН 2: РЕГИСТРАЦИЯ (@YA.RU) -->
-    <div class="card hidden" id="box-reg">
-        <h2>Регистрация (Только @ya.ru)</h2>
-        <input type="email" id="reg-mail" placeholder="логин@ya.ru" oninput="checkMail()">
-        <div id="mail-err" class="error hidden">🚨 Допустим только домен @ya.ru!</div>
-        <button class="btn" id="btn-code" style="background:#ff007f;color:#fff;" onclick="sendCode()">Получить код</button>
+    <!-- 2. СЕКРЕТНЫЙ ЭКРАН ТЕРМИНАЛА (Открывается после входа) -->
+    <div id="terminal-screen" class="hidden">
+        <h2>💻 Добро пожаловать в систему, Администратор!</h2>
+        <p>Статус: Сессия активна. Доступ к GLOWE // GloweAPI открыт.</p>
         
-        <div id="code-group" class="hidden">
-            <input type="text" id="reg-code" placeholder="XXXX" maxlength="4" style="text-align:center;font-size:18px;">
-            <button class="btn" style="background:#33ff33;color:#000;" onclick="doneReg()">Создать аккаунт</button>
+        <!-- КНОПКА «ПОДЕЛИТЬСЯ АККАУНТОМ» -->
+        <div class="share-box">
+            <h3>🔗 Поделиться доступом к аккаунту</h3>
+            <p style="color: #888;">Сгенерированная ссылка будет активна ровно 24 часа. После этого войти по ней не получится.</p>
+            <button onclick="generateShareLink()">Создать временную ссылку</button>
+            
+            <div id="share-result" class="hidden">
+                <p class="success">📋 Ссылка создана! Скопируйте её:</p>
+                <textarea id="generated-url" class="url-output" rows="3" readonly></textarea>
+            </div>
         </div>
-        <div class="link" onclick="toggleScreen(1)">Уже есть аккаунт? Войти</div>
     </div>
 
     <script>
-        function toggleScreen(toLogin) {
-            document.getElementById('box-login').classList.toggle('hidden', !toLogin);
-            document.getElementById('box-reg').classList.toggle('hidden', toLogin);
+        // Функция криптографического хэширования в SHA-256
+        async function sha256(message) {
+            const msgBuffer = new TextEncoder().encode(message);                    
+            const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
         }
 
-        function checkMail() {
-            let m = document.getElementById('reg-mail').value;
-            let err = document.getElementById('mail-err');
-            let btn = document.getElementById('btn-code');
-            let ok = m === "" || m.endsWith('@ya.ru');
-            err.classList.toggle('hidden', ok);
-            btn.disabled = !ok;
-            btn.style.opacity = ok ? "1" : "0.3";
+        // Алгоритм генерации токена на основе ID, Пароля и Точного времени создания
+        async function calculateToken(id, password, timestamp) {
+            const rawString = `${id}_${password}_${timestamp}`;
+            const fullHash = await sha256(rawString);
+            return fullHash.substring(0, 12); // Берём первые 12 символов хэша для компактности URL
         }
 
-        function sendCode() {
-            alert('GloweAPI: Код отправлен на сервер Яндекса!');
-            document.getElementById('code-group').classList.remove('hidden');
+        // Проверка URL параметров при загрузке страницы
+        async function checkUrlParams() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const id = urlParams.get('id');
+            const pass = urlParams.get('pass');
+            const ts = urlParams.get('ts'); // Время создания ссылки в секундах
+            const token = urlParams.get('token');
+
+            if (id && pass && ts && token) {
+                // Заполняем поля формы полученными данными
+                document.getElementById('user-id').value = id;
+                document.getElementById('user-password').value = pass;
+                document.getElementById('link-ts').value = ts;
+                document.getElementById('user-token').value = token;
+                
+                // Сразу запускаем проверку
+                await verifyAccess(id, pass, ts, token);
+            }
         }
 
-        function doneReg() {
-            if(document.getElementById('reg-code').value.length === 4) {
-                alert('Аккаунт занесен в базу GloweAPI!');
-                toggleScreen(1);
-            } else { alert('Неверный код!'); }
+        // Ручной вход по нажатию на кнопку
+        async function checkAccess() {
+            const id = document.getElementById('user-id').value;
+            const pass = document.getElementById('user-password').value;
+            const ts = document.getElementById('link-ts').value;
+            const token = document.getElementById('user-token').value;
+
+            await verifyAccess(id, pass, ts, token);
         }
 
-        // ДИНАМИЧЕСКИЙ СКРИПТ ОЧИСТКИ ССЫЛОК С ПРОБЕЛАМИ
-        let badUrl = "https://jsdelivr.net  /npm/  @emailjs/  browser@4  /dist/  email.min.js";
-        let script = document.createElement("script");
-        script.src = badUrl.replace(/ /g, "");
-        document.body.appendChild(script);
+        // Главная логика проверки токена и времени жизни
+        async function verifyAccess(id, pass, ts, inputToken) {
+            if (!id || !pass || !ts || !inputToken) {
+                showError("Заполните ID и Пароль, либо зайдите по действующей ссылке!");
+                return;
+            }
 
-        // ПЕРЕХВАТ НИКА ИЗ URL
-        window.onload = function() {
-            let user = new URLSearchParams(window.location.search).get('user');
-            if (user) document.getElementById('log-user').value = user;
-        };
+            // 1. Проверяем время жизни ссылки (24 часа = 86400 секунд)
+            const currentTimeSec = Math.floor(Date.now() / 1000);
+            const linkTimeSec = parseInt(ts, 10);
+            const timePassed = currentTimeSec - linkTimeSec;
+
+            if (timePassed > 86400 || timePassed < -60) { // Ссылка старше 24 часов (или создана в далеком будущем)
+                showError("❌ Доступ запрещен: Ссылка устарела! (Её срок действия 24 часа закончился)");
+                return;
+            }
+
+            // 2. Считаем, какой токен должен быть при этих данных
+            const expectedToken = await calculateToken(id, pass, ts);
+
+            // 3. Сверяем токены
+            if (inputToken === expectedToken) {
+                showTerminal();
+            } else {
+                showError("❌ Доступ запрещен: Неверный токен или измененные параметры в URL!");
+            }
+        }
+
+        // Генерация ссылки внутри личного кабинета (на 24 часа от текущего момента)
+        async function generateShareLink() {
+            const id = document.getElementById('user-id').value;
+            const pass = document.getElementById('user-password').value;
+            
+            // Фиксируем точное время генерации прямо сейчас (в секундах)
+            const currentTimestamp = Math.floor(Date.now() / 1000);
+            
+            // Генерируем токен именно под это время
+            const token = await calculateToken(id, pass, currentTimestamp);
+            
+            // Строим чистый URL текущего сайта (убираем старые параметры, если они были)
+            const baseUrl = window.location.origin + window.location.pathname;
+            
+            // Финальная ссылка со всеми параметрами безопасности
+            const shareUrl = `${baseUrl}?id=${encodeURIComponent(id)}&pass=${encodeURIComponent(pass)}&ts=${currentTimestamp}&token=${token}`;
+            
+            // Выводим результат пользователю
+            document.getElementById('generated-url').value = shareUrl;
+            document.getElementById('share-result').classList.remove('hidden');
+        }
+
+        function showTerminal() {
+            document.getElementById('error-msg').classList.add('hidden');
+            document.getElementById('login-screen').classList.add('hidden');
+            document.getElementById('terminal-screen').classList.remove('hidden');
+        }
+
+        function showError(text) {
+            const errEl = document.getElementById('error-msg');
+            errEl.innerText = text;
+            errEl.classList.remove('hidden');
+        }
+
+        // Старт скрипта
+        window.onload = checkUrlParams;
     </script>
-
 </body>
 </html>
