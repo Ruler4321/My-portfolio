@@ -9,9 +9,11 @@
         .hidden { display: none; }
         input, button { background: #1a1a1a; color: #00ff00; border: 1px solid #00ff00; padding: 6px; margin: 4px 0; width: 100%; max-width: 280px; font-family: monospace; box-sizing: border-box; }
         button { cursor: pointer; width: auto; background: #003300; }
-        .log { height: 180px; overflow-y: auto; background: #000; border: 1px solid #222; padding: 8px; margin: 8px 0; max-width: 450px; }
+        .log { height: 160px; overflow-y: auto; background: #000; border: 1px solid #222; padding: 8px; margin: 8px 0; max-width: 450px; }
         .btn-num { color: #ffaa00; border-color: #ffaa00; margin: 2px; padding: 5px 10px; }
         .btn-col { margin: 2px; padding: 5px 8px; color: #000; font-weight: bold; border-color: #fff; }
+        .panel { border: 1px dashed #fff; padding: 10px; margin-top: 10px; max-width: 450px; background: #111; }
+        .r-pnl { border-color: #ffaa00; color: #ffaa00; font-size: 12px; }
         .blind { filter: grayscale(100%) contrast(130%); color: #fff!important; }
         .blind input, .blind button { color: #fff!important; border-color: #fff!important; background: #222!important; }
     </style>
@@ -54,6 +56,19 @@
                 <button class="btn-col" style="background:#ffff33" onclick="sendSig('🟡 ЖЕЛТЫЙ')">Жл</button>
                 <button class="btn-col" style="background:#3333ff;color:#fff" onclick="sendSig('🔵 СИНИЙ')">Сн</button>
             </p>
+            <div class="panel r-pnl">
+                <h3>📖 ТАБЛИЦА СБОЯ (ДЛЯ НЕМОГО):</h3>
+                • Кр + 3 = 777 | • Зл + 1 = 102<br>• Жл + 5 = 940 | • Сн + 2 = 404
+            </div>
+        </div>
+
+        <div id="blind-zone" class="hidden">
+            <div class="panel">
+                <h3>🔒 СЕКРЕТНАЯ ШКАТУЛКА</h3>
+                <p id="box-status">Статус: ЗАБЛОКИРОВАНО. Введите код.</p>
+                <input type="text" id="vault-code" placeholder="Код..." style="max-width:120px;">
+                <button onclick="unlockVault()">Вскрыть</button>
+            </div>
         </div>
         <br>
         <button onclick="generateLink()">Ссылка гостя (24ч)</button>
@@ -93,6 +108,7 @@
             } else if (chosenRole === 'blind') {
                 title.innerText = "Слепой Исполнитель";
                 document.getElementById('text-zone').classList.remove('hidden');
+                document.getElementById('blind-zone').classList.remove('hidden');
             }
             updateLog(); setInterval(updateLog, 1000);
         }
@@ -103,7 +119,7 @@
             const log = document.getElementById('term-log');
             let html = "";
             history.forEach(d => {
-                if (chosenRole==='admin' || d.fromAdmin || d.role==='🕶️ СЛЕПОЙ' || d.role==='🔇 НЕМОЙ') {
+                if (chosenRole==='admin' || d.fromAdmin || d.role==='🕶️ СЛЕПОЙ' || d.role==='🔇 НЕМОЙ' || d.role==='⚙️ СИСТЕМА') {
                     html += `<div>[${d.role}]: ${d.text}</div>`;
                 }
             });
@@ -127,6 +143,20 @@
             updateLog();
         }
 
+        function unlockVault() {
+            const codeInput = document.getElementById('vault-code');
+            const code = codeInput.value.trim();
+            if (["777", "102", "940", "404"].includes(code)) {
+                document.getElementById('box-status').innerText = "Статус: 🎉 ВСКРЫТО!";
+                document.getElementById('box-status').style.color = "#00ff00";
+                const history = JSON.parse(localStorage.getItem('glowe_chat_' + accountId)) || [];
+                history.push({ text: `🔓 Слепой Исполнитель вскрыл шкатулку кодом [${code}]!`, role: "⚙️ СИСТЕМА", fromAdmin: false });
+                localStorage.setItem('glowe_chat_' + accountId, JSON.stringify(history));
+                updateLog();
+            } else { alert("❌ НЕВЕРНЫЙ КОД!"); }
+            codeInput.value = "";
+        }
+
         function generateLink() {
             const id = document.getElementById('user-id').value;
             const pass = document.getElementById('user-password').value;
@@ -138,7 +168,7 @@
         window.onload = function() {
             const p = new URLSearchParams(window.location.search);
             if (p.get('id') && p.get('pass')) {
-                document.getElementById('user-id').value = decodeURIComponent(p.get('id'));
+                document.getElementById('user-id').value = decodeURIComponent(p.get('p') || p.get('id'));
                 document.getElementById('user-password').value = decodeURIComponent(p.get('pass'));
                 checkAccess();
             }
