@@ -34,53 +34,64 @@
     </div>
 
     <script>
-        let isAdmin = true, channel = "";
+        let isAdmin = true, accountId = "";
 
-        async function checkAccess() {
-            const id = document.getElementById('user-id').value;
+        function checkAccess() {
+            const id = document.getElementById('user-id').value.trim();
             const pass = document.getElementById('user-password').value;
             if (!id || !pass) return;
 
+            accountId = id;
             const urlParams = new URLSearchParams(window.location.search);
-            // Если зашли по ссылке с токеном — значит зашел Гость
             isAdmin = !urlParams.get('token'); 
-            
-            // Превращаем ID в уникальную секретную комнату связи
-            const buffer = new TextEncoder().encode("chan_" + id);
-            const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
-            channel = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
 
             document.getElementById('login-screen').classList.add('hidden');
             document.getElementById('terminal-screen').classList.remove('hidden');
             document.getElementById('role-title').innerText = isAdmin ? "Главный Создатель" : "Гость";
 
-            // Слушаем входящие сообщения из сети
-            const es = new EventSource(`https://sse.dev{channel}/listen`);
-            es.onmessage = function(e) {
-                const data = JSON.parse(e.data);
-                // Главный видит всё. Гости видят сообщения ТОЛЬКО от Главного.
-                if (isAdmin || data.fromAdmin) {
-                    const log = document.getElementById('term-log');
-                    log.innerHTML += `<div>[${data.role}]: ${data.text}</div>`;
-                    log.scrollTop = log.scrollHeight;
-                }
-            };
+            // Сразу выводим историю сообщений
+            updateLog();
+            // Запускаем проверку обновлений чата каждую секунду
+            setInterval(updateLog, 1000);
         }
 
-        async function transmit() {
-            const input = document.getElementById('msg-input');
-            if (!input.value.trim()) return;
-
-            await fetch(`https://sse.dev{channel}/publish`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    text: input.value,
-                    role: isAdmin ? "🔥 СОЗДАТЕЛЬ" : "👤 ГОСТЬ",
-                    fromAdmin: isAdmin
-                })
+        function updateLog() {
+            const storageKey = 'glowe_chat_' + accountId;
+            const chatHistory = JSON.parse(localStorage.getItem(storageKey)) || [];
+            const log = document.getElementById('term-log');
+            
+            let html = "";
+            chatHistory.forEach(data => {
+                // Создатель видит всё. Гости видят только то, что написал Создатель.
+                if (isAdmin || data.fromAdmin) {
+                    html += `<div>[${data.role}]: ${data.text}</div>`;
+                }
             });
+            
+            // Обновляем лог только если текст изменился, чтобы не дергался скролл
+            if (log.innerHTML !== html) {
+                log.innerHTML = html;
+                log.scrollTop = log.scrollHeight;
+            }
+        }
+
+        function transmit() {
+            const input = document.getElementById('msg-input');
+            const text = input.value.trim();
+            if (!text) return;
+
+            const storageKey = 'glowe_chat_' + accountId;
+            const chatHistory = JSON.parse(localStorage.getItem(storageKey)) || [];
+
+            chatHistory.push({
+                text: text,
+                role: isAdmin ? "🔥 СОЗДАТЕЛЬ" : "👤 ГОСТЬ",
+                fromAdmin: isAdmin
+            });
+
+            localStorage.setItem(storageKey, JSON.stringify(chatHistory));
             input.value = "";
+            updateLog();
         }
 
         async function generateLink() {
@@ -88,7 +99,6 @@
             const pass = document.getElementById('user-password').value;
             const ts = Math.floor(Date.now() / 1000);
             
-            // Быстрый хэш для токена
             const buf = new TextEncoder().encode(`${id}_${pass}_${ts}`);
             const hBuf = await crypto.subtle.digest('SHA-256', buf);
             const token = Array.from(new Uint8Array(hBuf)).map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 12);
@@ -97,7 +107,6 @@
             document.getElementById('link-out').innerText = "Ссылка: " + url;
         }
 
-        // Авто-вход при переходе по ссылке
         window.onload = function() {
             const params = new URLSearchParams(window.location.search);
             if (params.get('id') && params.get('pass')) {
