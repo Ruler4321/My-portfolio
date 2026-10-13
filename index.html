@@ -5,17 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GLOWE Terminal</title>
     <style>
-        body { background: #0e0e0e; color: #00ff00; font-family: monospace; padding: 15px; }
-        .hidden { display: none; }
-        input, button { background: #1a1a1a; color: #00ff00; border: 1px solid #00ff00; padding: 6px; margin: 4px 0; width: 100%; max-width: 280px; font-family: monospace; box-sizing: border-box; }
-        button { cursor: pointer; width: auto; background: #003300; }
-        .log { height: 160px; overflow-y: auto; background: #000; border: 1px solid #222; padding: 8px; margin: 8px 0; max-width: 450px; }
-        .btn-num { color: #ffaa00; border-color: #ffaa00; margin: 2px; padding: 5px 10px; }
-        .btn-col { margin: 2px; padding: 5px 8px; color: #000; font-weight: bold; border-color: #fff; }
-        .panel { border: 1px dashed #fff; padding: 10px; margin-top: 10px; max-width: 450px; background: #111; }
-        .r-pnl { border-color: #ffaa00; color: #ffaa00; font-size: 12px; }
-        .blind { filter: grayscale(100%) contrast(130%); color: #fff!important; }
-        .blind input, .blind button { color: #fff!important; border-color: #fff!important; background: #222!important; }
+        body{background:#0e0e0e;color:#00ff00;font-family:monospace;padding:15px}
+        .hidden{display:none}
+        input,button{background:#1a1a1a;color:#00ff00;border:1px solid #00ff00;padding:6px;margin:4px 0;width:100%;max-width:280px;font-family:monospace;box-sizing:border-box}
+        button{cursor:pointer;width:auto;background:#003300}
+        .log{height:160px;overflow-y:auto;background:#000;border:1px solid #222;padding:8px;margin:8px 0;max-width:450px}
+        .btn-num{color:#ffaa00;border-color:#ffaa00;margin:2px;padding:5px 10px}
+        .btn-col{margin:2px;padding:5px 8px;color:#000;font-weight:bold;border-color:#fff}
+        .pnl{border:1px dashed #fff;padding:10px;margin-top:10px;max-width:450px;background:#111}
+        .r-pnl{border-color:#ffaa00;color:#ffaa00;font-size:12px}
+        .blind{filter:grayscale(100%) contrast(130%);color:#fff!important}
+        .blind input,.blind button{color:#fff!important;border-color:#fff!important;background:#222!important}
+        .lamp{font-size:15px;font-weight:bold;padding:8px;border:1px solid #00ff00;margin-bottom:8px;max-width:450px;background:#050505}
     </style>
 </head>
 <body>
@@ -35,6 +36,11 @@
 
     <div id="terminal-screen" class="hidden">
         <h2>💻 <span id="role-title"></span></h2>
+        
+        <div id="creator-lamp-zone" class="hidden">
+            <div class="lamp">🚨 АКТИВНАЯ УЛИКА: <span id="lamp-status">Генерация...</span></div>
+        </div>
+
         <div class="log" id="term-log"></div>
         
         <div id="text-zone" class="hidden">
@@ -56,14 +62,14 @@
                 <button class="btn-col" style="background:#ffff33" onclick="sendSig('🟡 ЖЕЛТЫЙ')">Жл</button>
                 <button class="btn-col" style="background:#3333ff;color:#fff" onclick="sendSig('🔵 СИНИЙ')">Сн</button>
             </p>
-            <div class="panel r-pnl">
+            <div class="pnl r-pnl">
                 <h3>📖 ТАБЛИЦА СБОЯ (ДЛЯ НЕМОГО):</h3>
                 • Кр + 3 = 777 | • Зл + 1 = 102<br>• Жл + 5 = 940 | • Сн + 2 = 404
             </div>
         </div>
 
         <div id="blind-zone" class="hidden">
-            <div class="panel">
+            <div class="pnl">
                 <h3>🔒 СЕКРЕТНАЯ ШКАТУЛКА</h3>
                 <p id="box-status">Статус: ЗАБЛОКИРОВАНО. Введите код.</p>
                 <input type="text" id="vault-code" placeholder="Код..." style="max-width:120px;">
@@ -102,6 +108,8 @@
             if (chosenRole === 'admin') {
                 title.innerText = "Глухой Передатчик (Создатель)";
                 document.getElementById('text-zone').classList.remove('hidden');
+                document.getElementById('creator-lamp-zone').classList.remove('hidden');
+                genLamp();
             } else if (chosenRole === 'mute') {
                 title.innerText = "Немой Наблюдатель";
                 document.getElementById('mute-zone').classList.remove('hidden');
@@ -111,6 +119,16 @@
                 document.getElementById('blind-zone').classList.remove('hidden');
             }
             updateLog(); setInterval(updateLog, 1000);
+        }
+
+        function genLamp() {
+            const lamps = [
+                { t: "🔴 КРАСНЫЙ + 3", c: "#ff3333" }, { t: "🟢 ЗЕЛЕНЫЙ + 1", c: "#33ff33" },
+                { t: "🟡 ЖЕЛТЫЙ + 5", c: "#ffff33" }, { t: "🔵 СИНИЙ + 2", c: "#3333ff" }
+            ];
+            const sel = lamps[Math.floor((Date.now() / 60000) % lamps.length)];
+            const el = document.getElementById('lamp-status');
+            el.innerText = sel.t; el.style.color = sel.c;
         }
 
         function updateLog() {
@@ -158,10 +176,8 @@
         }
 
         function generateLink() {
-            const id = document.getElementById('user-id').value;
-            const pass = document.getElementById('user-password').value;
-            const ts = Math.floor(Date.now() / 1000);
-            const token = Math.random().toString(36).substring(2, 10);
+            const id = document.getElementById('user-id').value, pass = document.getElementById('user-password').value;
+            const ts = Math.floor(Date.now() / 1000), token = Math.random().toString(36).substring(2, 10);
             document.getElementById('link-out').innerText = "Ссылка: " + window.location.origin + window.location.pathname + `?id=${encodeURIComponent(id)}&pass=${encodeURIComponent(pass)}&ts=${ts}&token=${token}`;
         }
 
