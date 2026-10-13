@@ -7,23 +7,23 @@
     <style>
         body { background: #0e0e0e; color: #00ff00; font-family: monospace; padding: 20px; }
         .hidden { display: none; }
-        .error { color: #ff3333; margin: 10px 0; }
+        .error { color: #ff3333; margin: 10px 0; font-weight: bold; }
         .success { color: #00ff00; margin: 10px 0; }
         .form-group { margin-bottom: 10px; }
-        input, button { background: #1a1a1a; color: #00ff00; border: 1px solid #00ff00; padding: 8px 12px; margin: 5px 0; width: 280px; font-family: monospace; }
+        input, button { background: #1a1a1a; color: #00ff00; border: 1px solid #00ff00; padding: 8px 12px; margin: 5px 0; width: 100%; max-width: 280px; box-sizing: border-box; font-family: monospace; }
         button { cursor: pointer; width: auto; background: #003300; }
         button:hover { background: #005500; }
         .share-box { background: #111; border: 1px dashed #00ff00; padding: 15px; margin-top: 20px; max-width: 500px; }
-        .url-output { width: 100%; background: #000; border: 1px solid #333; padding: 5px; color: #ffff00; font-size: 12px; word-break: break-all; }
+        .url-output { width: 100%; background: #000; border: 1px solid #333; padding: 5px; color: #ffff00; font-size: 12px; word-break: break-all; font-family: monospace; resize: vertical; }
     </style>
 </head>
 <body>
 
-    <!-- 1. ЭКРАН АВТОРИЗАЦИИ (Показывается изначально) -->
+    <!-- 1. ЭКРАН АВТОРИЗАЦИИ -->
     <div id="login-screen">
         <h2>GLOWE // GloweAPI v1.0</h2>
         <h3>Вход в терминал</h3>
-        <p id="error-msg" class="error hidden">❌ Доступ запрещен: ссылка устарела (прошло >24ч) или токены не совпадают!</p>
+        <p id="error-msg" class="error hidden"></p>
         
         <div class="form-group">
             <input type="text" id="user-id" placeholder="ID пользователя">
@@ -32,32 +32,32 @@
             <input type="password" id="user-password" placeholder="Постоянный пароль">
         </div>
         <div class="form-group">
-            <input type="text" id="link-ts" class="hidden"> <!-- Скрытое поле для времени из ссылки -->
-            <input type="text" id="user-token" placeholder="Токен безопасности (из ссылки)" readonly style="opacity: 0.6;">
+            <input type="text" id="link-ts" class="hidden"> <!-- Скрытое поле для времени -->
+            <input type="text" id="user-token" placeholder="Токен безопасности (из ссылки)" readonly style="opacity: 0.5;">
         </div>
         <button onclick="checkAccess()">Войти в систему</button>
     </div>
 
-    <!-- 2. СЕКРЕТНЫЙ ЭКРАН ТЕРМИНАЛА (Открывается после входа) -->
+    <!-- 2. СЕКРЕТНЫЙ ЭКРАН ТЕРМИНАЛА -->
     <div id="terminal-screen" class="hidden">
         <h2>💻 Добро пожаловать в систему, Администратор!</h2>
-        <p>Статус: Сессия активна. Доступ к GLOWE // GloweAPI открыт.</p>
+        <p>Статус: Сессия active. Доступ к GLOWE // GloweAPI открыт.</p>
         
-        <!-- КНОПКА «ПОДЕЛИТЬСЯ АККАУНТОМ» -->
+        <!-- БЛОК ГЕНЕРАЦИИ ССЫЛКИ -->
         <div class="share-box">
             <h3>🔗 Поделиться доступом к аккаунту</h3>
-            <p style="color: #888;">Сгенерированная ссылка будет активна ровно 24 часа. После этого войти по ней не получится.</p>
+            <p style="color: #888;">Сгенерированная ссылка будет активна ровно 24 часа. После этого зайти по ней не получится.</p>
             <button onclick="generateShareLink()">Создать временную ссылку</button>
             
             <div id="share-result" class="hidden">
-                <p class="success">📋 Ссылка создана! Скопируйте её:</p>
-                <textarea id="generated-url" class="url-output" rows="3" readonly></textarea>
+                <p class="success">📋 Ссылка создана! Вы можете отправить её другому человеку:</p>
+                <textarea id="generated-url" class="url-output" rows="4" readonly></textarea>
             </div>
         </div>
     </div>
 
     <script>
-        // Функция криптографического хэширования в SHA-256
+        // Функция криптографического хэширования строки в SHA-256
         async function sha256(message) {
             const msgBuffer = new TextEncoder().encode(message);                    
             const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
@@ -65,34 +65,32 @@
             return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
         }
 
-        // Алгоритм генерации токена на основе ID, Пароля и Точного времени создания
+        // Алгоритм вычисления токена
         async function calculateToken(id, password, timestamp) {
             const rawString = `${id}_${password}_${timestamp}`;
             const fullHash = await sha256(rawString);
-            return fullHash.substring(0, 12); // Берём первые 12 символов хэша для компактности URL
+            return fullHash.substring(0, 12); // Сокращаем хэш до 12 символов
         }
 
-        // Проверка URL параметров при загрузке страницы
+        // Автоматическая проверка параметров при входе по ссылке
         async function checkUrlParams() {
             const urlParams = new URLSearchParams(window.location.search);
             const id = urlParams.get('id');
             const pass = urlParams.get('pass');
-            const ts = urlParams.get('ts'); // Время создания ссылки в секундах
+            const ts = urlParams.get('ts'); 
             const token = urlParams.get('token');
 
             if (id && pass && ts && token) {
-                // Заполняем поля формы полученными данными
                 document.getElementById('user-id').value = id;
                 document.getElementById('user-password').value = pass;
                 document.getElementById('link-ts').value = ts;
                 document.getElementById('user-token').value = token;
                 
-                // Сразу запускаем проверку
                 await verifyAccess(id, pass, ts, token);
             }
         }
 
-        // Ручной вход по нажатию на кнопку
+        // Кнопка ручной отправки формы
         async function checkAccess() {
             const id = document.getElementById('user-id').value;
             const pass = document.getElementById('user-password').value;
@@ -102,52 +100,63 @@
             await verifyAccess(id, pass, ts, token);
         }
 
-        // Главная логика проверки токена и времени жизни
+        // Логика проверки авторизации
         async function verifyAccess(id, pass, ts, inputToken) {
-            if (!id || !pass || !ts || !inputToken) {
-                showError("Заполните ID и Пароль, либо зайдите по действующей ссылке!");
+            // Базовая проверка заполнения полей
+            if (!id || !pass) {
+                showError("Заполните ID и Пароль!");
                 return;
             }
 
-            // 1. Проверяем время жизни ссылки (24 часа = 86400 секунд)
+            // РЕЖИМ 1: Прямой ручной вход без параметров в ссылке
+            if (!ts && !inputToken) {
+                showTerminal(); 
+                return;
+            }
+
+            // РЕЖИМ 2: Частично битая ссылка
+            if (!ts || !inputToken) {
+                showError("❌ Ошибка доступа: В ссылке повреждены или отсутствуют ключи авторизации!");
+                return;
+            }
+
+            // Проверка времени жизни ссылки (24 часа = 86400 секунд)
             const currentTimeSec = Math.floor(Date.now() / 1000);
             const linkTimeSec = parseInt(ts, 10);
             const timePassed = currentTimeSec - linkTimeSec;
 
-            if (timePassed > 86400 || timePassed < -60) { // Ссылка старше 24 часов (или создана в далеком будущем)
+            if (timePassed > 86400 || timePassed < -60) {
                 showError("❌ Доступ запрещен: Ссылка устарела! (Её срок действия 24 часа закончился)");
                 return;
             }
 
-            // 2. Считаем, какой токен должен быть при этих данных
+            // Проверка валидности самого токена
             const expectedToken = await calculateToken(id, pass, ts);
 
-            // 3. Сверяем токены
             if (inputToken === expectedToken) {
                 showTerminal();
             } else {
-                showError("❌ Доступ запрещен: Неверный токен или измененные параметры в URL!");
+                showError("❌ Доступ запрещен: Неверный токен безопасности!");
             }
         }
 
-        // Генерация ссылки внутри личного кабинета (на 24 часа от текущего момента)
+        // Создание 24-часовой ссылки внутри терминала
         async function generateShareLink() {
             const id = document.getElementById('user-id').value;
             const pass = document.getElementById('user-password').value;
             
-            // Фиксируем точное время генерации прямо сейчас (в секундах)
+            // Берем текущее время на компьютере в секундах
             const currentTimestamp = Math.floor(Date.now() / 1000);
             
-            // Генерируем токен именно под это время
+            // Вычисляем токен
             const token = await calculateToken(id, pass, currentTimestamp);
             
-            // Строим чистый URL текущего сайта (убираем старые параметры, если они были)
+            // Формируем чистый URL сайта
             const baseUrl = window.location.origin + window.location.pathname;
             
-            // Финальная ссылка со всеми параметрами безопасности
+            // Собираем всё в итоговую ссылку
             const shareUrl = `${baseUrl}?id=${encodeURIComponent(id)}&pass=${encodeURIComponent(pass)}&ts=${currentTimestamp}&token=${token}`;
             
-            // Выводим результат пользователю
             document.getElementById('generated-url').value = shareUrl;
             document.getElementById('share-result').classList.remove('hidden');
         }
@@ -164,7 +173,7 @@
             errEl.classList.remove('hidden');
         }
 
-        // Старт скрипта
+        // Запуск при загрузке страницы
         window.onload = checkUrlParams;
     </script>
 </body>
