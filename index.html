@@ -3,207 +3,109 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GLOWE // GloweAPI</title>
+    <title>GLOWE Terminal</title>
     <style>
         body { background: #0e0e0e; color: #00ff00; font-family: monospace; padding: 20px; }
         .hidden { display: none; }
-        .error { color: #ff3333; margin: 10px 0; font-weight: bold; }
-        .success { color: #00ff00; margin: 10px 0; }
-        .form-group { margin-bottom: 10px; }
-        input, button, textarea { background: #1a1a1a; color: #00ff00; border: 1px solid #00ff00; padding: 8px 12px; margin: 5px 0; width: 100%; max-width: 280px; box-sizing: border-box; font-family: monospace; }
+        input, button { background: #1a1a1a; color: #00ff00; border: 1px solid #00ff00; padding: 8px; margin: 5px 0; width: 100%; max-width: 300px; font-family: monospace; box-sizing: border-box; }
         button { cursor: pointer; width: auto; background: #003300; }
-        button:hover { background: #005500; }
-        .share-box { background: #111; border: 1px dashed #00ff00; padding: 15px; margin-top: 20px; max-width: 500px; }
-        .url-output { width: 100%; background: #000; border: 1px solid #333; padding: 5px; color: #ffff00; font-size: 12px; word-break: break-all; resize: vertical; }
+        .log { height: 200px; overflow-y: auto; background: #000; border: 1px solid #222; padding: 10px; margin: 10px 0; max-width: 500px; }
     </style>
 </head>
 <body>
 
-    <!-- 1. ЭКРАН АВТОРИЗАЦИИ -->
+    <!-- ЭКРАН ВХОДА -->
     <div id="login-screen">
-        <h2>GLOWE // GloweAPI v1.0</h2>
-        <h3>Вход в terminal</h3>
-        <p id="error-msg" class="error hidden"></p>
-        
-        <div class="form-group">
-            <input type="text" id="user-id" placeholder="ID пользователя">
-        </div>
-        <div class="form-group">
-            <input type="password" id="user-password" placeholder="Постоянный пароль">
-        </div>
-        <div class="form-group">
-            <input type="text" id="link-ts" class="hidden">
-            <input type="text" id="user-token" placeholder="Токен безопасности (из ссылки)" readonly style="opacity: 0.5;">
-        </div>
-        <button onclick="checkAccess()">Войти в систему</button>
+        <h2>GLOWE // Вход</h2>
+        <input type="text" id="user-id" placeholder="ID пользователя">
+        <input type="password" id="user-password" placeholder="Пароль">
+        <button onclick="checkAccess()">Войти</button>
     </div>
 
-    <!-- 2. СЕКРЕТНЫЙ ЭКРАН ТЕРМИНАЛА -->
+    <!-- ЭКРАН ТЕРМИНАЛА -->
     <div id="terminal-screen" class="hidden">
-        <h2>💻 Добро пожаловать в систему, Администратор!</h2>
-        <p>Статус: Сессия active. Доступ к GLOWE // GloweAPI открыт.</p>
-        <p>Всего успешных входов по ссылкам этого аккаунта: <span id="joins-count" style="color: #ffff00; font-weight: bold;">Загрузка...</span></p>
-        
-        <!-- БЛОК ГЕНЕРАЦИИ ССЫЛКИ -->
-        <div class="share-box">
-            <h3>🔗 Поделиться доступом к аккаунту</h3>
-            <p style="color: #888;">Сгенерированная ссылка будет активна ровно 24 часа. После этого зайти по ней не получится.</p>
-            <button onclick="generateShareLink()">Создать временную ссылку</button>
-            
-            <div id="share-result" class="hidden">
-                <p class="success">📋 Ссылка создана! Вы можете отправить её другому человеку:</p>
-                <textarea id="generated-url" class="url-output" rows="4" readonly></textarea>
-            </div>
-        </div>
+        <h2>💻 Терминал: <span id="role-title"></span></h2>
+        <div class="log" id="term-log"></div>
+        <input type="text" id="msg-input" placeholder="Написать что угодно..." onkeydown="if(event.key==='Enter') transmit()">
+        <button onclick="transmit()">Отправить</button>
+        <br><br>
+        <button onclick="generateLink()">Создать ссылку гостя (24ч)</button>
+        <p id="link-out" style="color: #ffff00; word-break: break-all; max-width: 500px;"></p>
     </div>
 
     <script>
-        async function sha256(message) {
-            const msgBuffer = new TextEncoder().encode(message);                    
-            const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
-            const hashArray = Array.from(new Uint8Array(hashBuffer));
-            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-        }
-
-        async function calculateToken(id, password, timestamp) {
-            const rawString = `${id}_${password}_${timestamp}`;
-            const fullHash = await sha256(rawString);
-            return fullHash.substring(0, 12);
-        }
-
-        async function checkUrlParams() {
-            const urlParams = new URLSearchParams(window.location.search);
-            const id = urlParams.get('id');
-            const pass = urlParams.get('pass');
-            const ts = urlParams.get('ts'); 
-            const token = urlParams.get('token');
-
-            if (id && pass && ts && token) {
-                document.getElementById('user-id').value = id;
-                document.getElementById('user-password').value = pass;
-                document.getElementById('link-ts').value = ts;
-                document.getElementById('user-token').value = token;
-                
-                await verifyAccess(id, pass, ts, token);
-            }
-        }
+        let isAdmin = true, channel = "";
 
         async function checkAccess() {
             const id = document.getElementById('user-id').value;
             const pass = document.getElementById('user-password').value;
-            const ts = document.getElementById('link-ts').value;
-            const token = document.getElementById('user-token').value;
+            if (!id || !pass) return;
 
-            await verifyAccess(id, pass, ts, token);
-        }
-
-        async function verifyAccess(id, pass, ts, inputToken) {
-            if (!id || !pass) {
-                showError("Заполните ID и Пароль!");
-                return;
-            }
-
-            if (!ts && !inputToken) {
-                await showTerminal(); 
-                return;
-            }
-
-            if (!ts || !inputToken) {
-                showError("❌ Ошибка доступа: Ключи авторизации повреждены!");
-                return;
-            }
-
-            // Проверка 24 часов (86400 секунд)
-            const currentTimeSec = Math.floor(Date.now() / 1000);
-            const linkTimeSec = parseInt(ts, 10);
-            const timePassed = currentTimeSec - linkTimeSec;
-
-            if (timePassed > 86400 || timePassed < -60) {
-                showError("❌ Доступ запрещен: Ссылка устарела! (Её срок действия 24 часа закончился)");
-                return;
-            }
-
-            const expectedToken = await calculateToken(id, pass, ts);
-
-            if (inputToken === expectedToken) {
-                await showTerminal();
-            } else {
-                showError("❌ Доступ запрещен: Неверный токен безопасности!");
-            }
-        }
-
-        // Автовыброс из системы (Проверка каждые 5 секунд)
-        setInterval(function() {
             const urlParams = new URLSearchParams(window.location.search);
-            const ts = urlParams.get('ts');
-            if (ts) {
-                const currentTimeSec = Math.floor(Date.now() / 1000);
-                if ((currentTimeSec - parseInt(ts, 10)) > 86400) {
-                    alert("Срок действия вашей временной ссылки истек! Сессия закрыта.");
-                    window.location.href = window.location.origin + window.location.pathname;
-                }
-            }
-        }, 5000);
+            // Если зашли по ссылке с токеном — значит зашел Гость
+            isAdmin = !urlParams.get('token'); 
+            
+            // Превращаем ID в уникальную секретную комнату связи
+            const buffer = new TextEncoder().encode("chan_" + id);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+            channel = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
 
-        // ЗАПУСК ТЕРМИНАЛА С АВТОНОМНЫМ СЧЕТЧИКОМ
-        async function showTerminal() {
-            document.getElementById('error-msg').classList.add('hidden');
             document.getElementById('login-screen').classList.add('hidden');
             document.getElementById('terminal-screen').classList.remove('hidden');
+            document.getElementById('role-title').innerText = isAdmin ? "Главный Создатель" : "Гость";
 
-            const accountId = document.getElementById('user-id').value || "default_user";
-            const safeKey = "glowe_" + accountId.replace(/[^a-zA-Z0-9]/g, "");
-
-            const urlParams = new URLSearchParams(window.location.search);
-            const hasToken = urlParams.get('token');
-
-            try {
-                let namespace = "gloweapi_v1";
-                let apiUrl = `https://countapi.xyz{namespace}/${safeKey}`;
-                
-                if (!hasToken) {
-                    apiUrl = `https://countapi.xyz{namespace}/${safeKey}`;
+            // Слушаем входящие сообщения из сети
+            const es = new EventSource(`https://sse.dev{channel}/listen`);
+            es.onmessage = function(e) {
+                const data = JSON.parse(e.data);
+                // Главный видит всё. Гости видят сообщения ТОЛЬКО от Главного.
+                if (isAdmin || data.fromAdmin) {
+                    const log = document.getElementById('term-log');
+                    log.innerHTML += `<div>[${data.role}]: ${data.text}</div>`;
+                    log.scrollTop = log.scrollHeight;
                 }
-
-                const response = await fetch(apiUrl);
-                if (!response.ok) throw new Error("Сетевой сбой");
-                const data = await response.json();
-                
-                document.getElementById('joins-count').innerText = data.value || 0;
-            } catch (error) {
-                // Резервный план: если внешний сервер лежит, сохраняем локально
-                console.log("Использование резервного хранилища");
-                let localJoins = localStorage.getItem('local_joins_' + safeKey) || 0;
-                
-                if (hasToken && !sessionStorage.getItem('counted_' + safeKey)) {
-                    localJoins = parseInt(localJoins, 10) + 1;
-                    localStorage.setItem('local_joins_' + safeKey, localJoins);
-                    sessionStorage.setItem('counted_' + safeKey, 'true');
-                }
-                
-                document.getElementById('joins-count').innerText = localJoins + " (local)";
-            }
+            };
         }
 
-        async function generateShareLink() {
+        async function transmit() {
+            const input = document.getElementById('msg-input');
+            if (!input.value.trim()) return;
+
+            await fetch(`https://sse.dev{channel}/publish`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    text: input.value,
+                    role: isAdmin ? "🔥 СОЗДАТЕЛЬ" : "👤 ГОСТЬ",
+                    fromAdmin: isAdmin
+                })
+            });
+            input.value = "";
+        }
+
+        async function generateLink() {
             const id = document.getElementById('user-id').value;
             const pass = document.getElementById('user-password').value;
-            const currentTimestamp = Math.floor(Date.now() / 1000);
-            const token = await calculateToken(id, pass, currentTimestamp);
-            const baseUrl = window.location.origin + window.location.pathname;
-            const shareUrl = `${baseUrl}?id=${encodeURIComponent(id)}&pass=${encodeURIComponent(pass)}&ts=${currentTimestamp}&token=${token}`;
+            const ts = Math.floor(Date.now() / 1000);
             
-            document.getElementById('generated-url').value = shareUrl;
-            document.getElementById('share-result').classList.remove('hidden');
+            // Быстрый хэш для токена
+            const buf = new TextEncoder().encode(`${id}_${pass}_${ts}`);
+            const hBuf = await crypto.subtle.digest('SHA-256', buf);
+            const token = Array.from(new Uint8Array(hBuf)).map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 12);
+
+            const url = `${window.location.origin}${window.location.pathname}?id=${encodeURIComponent(id)}&pass=${encodeURIComponent(pass)}&ts=${ts}&token=${token}`;
+            document.getElementById('link-out').innerText = "Ссылка: " + url;
         }
 
-        function showError(text) {
-            const errEl = document.getElementById('error-msg');
-            errEl.innerText = text;
-            errEl.classList.remove('hidden');
-        }
-
-        window.onload = checkUrlParams;
+        // Авто-вход при переходе по ссылке
+        window.onload = function() {
+            const params = new URLSearchParams(window.location.search);
+            if (params.get('id') && params.get('pass')) {
+                document.getElementById('user-id').value = params.get('id');
+                document.getElementById('user-password').value = params.get('pass');
+                checkAccess();
+            }
+        };
     </script>
 </body>
 </html>
