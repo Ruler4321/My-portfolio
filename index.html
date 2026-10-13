@@ -10,11 +10,11 @@
         .error { color: #ff3333; margin: 10px 0; font-weight: bold; }
         .success { color: #00ff00; margin: 10px 0; }
         .form-group { margin-bottom: 10px; }
-        input, button { background: #1a1a1a; color: #00ff00; border: 1px solid #00ff00; padding: 8px 12px; margin: 5px 0; width: 100%; max-width: 280px; box-sizing: border-box; font-family: monospace; }
+        input, button, textarea { background: #1a1a1a; color: #00ff00; border: 1px solid #00ff00; padding: 8px 12px; margin: 5px 0; width: 100%; max-width: 280px; box-sizing: border-box; font-family: monospace; }
         button { cursor: pointer; width: auto; background: #003300; }
         button:hover { background: #005500; }
         .share-box { background: #111; border: 1px dashed #00ff00; padding: 15px; margin-top: 20px; max-width: 500px; }
-        .url-output { width: 100%; background: #000; border: 1px solid #333; padding: 5px; color: #ffff00; font-size: 12px; word-break: break-all; font-family: monospace; resize: vertical; }
+        .url-output { width: 100%; background: #000; border: 1px solid #333; padding: 5px; color: #ffff00; font-size: 12px; word-break: break-all; resize: vertical; }
     </style>
 </head>
 <body>
@@ -22,7 +22,7 @@
     <!-- 1. ЭКРАН АВТОРИЗАЦИИ -->
     <div id="login-screen">
         <h2>GLOWE // GloweAPI v1.0</h2>
-        <h3>Вход в терминал</h3>
+        <h3>Вход в terminal</h3>
         <p id="error-msg" class="error hidden"></p>
         
         <div class="form-group">
@@ -32,7 +32,7 @@
             <input type="password" id="user-password" placeholder="Постоянный пароль">
         </div>
         <div class="form-group">
-            <input type="text" id="link-ts" class="hidden"> <!-- Скрытое поле для времени -->
+            <input type="text" id="link-ts" class="hidden">
             <input type="text" id="user-token" placeholder="Токен безопасности (из ссылки)" readonly style="opacity: 0.5;">
         </div>
         <button onclick="checkAccess()">Войти в систему</button>
@@ -42,6 +42,7 @@
     <div id="terminal-screen" class="hidden">
         <h2>💻 Добро пожаловать в систему, Администратор!</h2>
         <p>Статус: Сессия active. Доступ к GLOWE // GloweAPI открыт.</p>
+        <p>Всего успешных входов по ссылкам этого аккаунта: <span id="joins-count" style="color: #ffff00; font-weight: bold;">Загрузка...</span></p>
         
         <!-- БЛОК ГЕНЕРАЦИИ ССЫЛКИ -->
         <div class="share-box">
@@ -57,7 +58,6 @@
     </div>
 
     <script>
-        // Функция криптографического хэширования строки в SHA-256
         async function sha256(message) {
             const msgBuffer = new TextEncoder().encode(message);                    
             const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
@@ -65,14 +65,12 @@
             return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
         }
 
-        // Алгоритм вычисления токена
         async function calculateToken(id, password, timestamp) {
             const rawString = `${id}_${password}_${timestamp}`;
             const fullHash = await sha256(rawString);
-            return fullHash.substring(0, 12); // Сокращаем хэш до 12 символов
+            return fullHash.substring(0, 12);
         }
 
-        // Автоматическая проверка параметров при входе по ссылке
         async function checkUrlParams() {
             const urlParams = new URLSearchParams(window.location.search);
             const id = urlParams.get('id');
@@ -90,7 +88,6 @@
             }
         }
 
-        // Кнопка ручной отправки формы
         async function checkAccess() {
             const id = document.getElementById('user-id').value;
             const pass = document.getElementById('user-password').value;
@@ -100,27 +97,23 @@
             await verifyAccess(id, pass, ts, token);
         }
 
-        // Логика проверки авторизации
         async function verifyAccess(id, pass, ts, inputToken) {
-            // Базовая проверка заполнения полей
             if (!id || !pass) {
                 showError("Заполните ID и Пароль!");
                 return;
             }
 
-            // РЕЖИМ 1: Прямой ручной вход без параметров в ссылке
             if (!ts && !inputToken) {
-                showTerminal(); 
+                await showTerminal(); 
                 return;
             }
 
-            // РЕЖИМ 2: Частично битая ссылка
             if (!ts || !inputToken) {
-                showError("❌ Ошибка доступа: В ссылке повреждены или отсутствуют ключи авторизации!");
+                showError("❌ Ошибка доступа: Ключи авторизации повреждены!");
                 return;
             }
 
-            // Проверка времени жизни ссылки (24 часа = 86400 секунд)
+            // Проверка 24 часов (86400 секунд)
             const currentTimeSec = Math.floor(Date.now() / 1000);
             const linkTimeSec = parseInt(ts, 10);
             const timePassed = currentTimeSec - linkTimeSec;
@@ -130,41 +123,69 @@
                 return;
             }
 
-            // Проверка валидности самого токена
             const expectedToken = await calculateToken(id, pass, ts);
 
             if (inputToken === expectedToken) {
-                showTerminal();
+                await showTerminal();
             } else {
                 showError("❌ Доступ запрещен: Неверный токен безопасности!");
             }
         }
 
-        // Создание 24-часовой ссылки внутри терминала
+        // Автовыброс из системы (Проверка каждые 5 секунд)
+        setInterval(function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const ts = urlParams.get('ts');
+            if (ts) {
+                const currentTimeSec = Math.floor(Date.now() / 1000);
+                if ((currentTimeSec - parseInt(ts, 10)) > 86400) {
+                    alert("Срок действия вашей временной ссылки истек! Сессия закрыта.");
+                    window.location.href = window.location.origin + window.location.pathname;
+                }
+            }
+        }, 5000);
+
+        // ЗАПУСК ТЕРМИНАЛА С УЧЕТОМ КОЛИЧЕСТВА JOIN-ПОДКЛЮЧЕНИЙ
+        async function showTerminal() {
+            document.getElementById('error-msg').classList.add('hidden');
+            document.getElementById('login-screen').classList.add('hidden');
+            document.getElementById('terminal-screen').classList.remove('hidden');
+
+            const accountId = document.getElementById('user-id').value || "default_user";
+            // Безопасный ключ для API без спецсимволов
+            const safeKey = "glowe_joins_" + accountId.replace(/[^a-zA-Z0-9]/g, "");
+
+            const urlParams = new URLSearchParams(window.location.search);
+            const hasToken = urlParams.get('token');
+
+            try {
+                let apiUrl = `https://mileshilliard.com{safeKey}`;
+                
+                // Если зашли без токена (вручную), просто запрашиваем число без прибавления +1
+                if (!hasToken) {
+                    apiUrl = `https://mileshilliard.com{safeKey}`;
+                }
+
+                const response = await fetch(apiUrl);
+                const data = await response.json();
+                
+                document.getElementById('joins-count').innerText = data.value || 0;
+            } catch (error) {
+                console.error("Ошибка получения статистики:", error);
+                document.getElementById('joins-count').innerText = "недоступно";
+            }
+        }
+
         async function generateShareLink() {
             const id = document.getElementById('user-id').value;
             const pass = document.getElementById('user-password').value;
-            
-            // Берем текущее время на компьютере в секундах
             const currentTimestamp = Math.floor(Date.now() / 1000);
-            
-            // Вычисляем токен
             const token = await calculateToken(id, pass, currentTimestamp);
-            
-            // Формируем чистый URL сайта
             const baseUrl = window.location.origin + window.location.pathname;
-            
-            // Собираем всё в итоговую ссылку
             const shareUrl = `${baseUrl}?id=${encodeURIComponent(id)}&pass=${encodeURIComponent(pass)}&ts=${currentTimestamp}&token=${token}`;
             
             document.getElementById('generated-url').value = shareUrl;
             document.getElementById('share-result').classList.remove('hidden');
-        }
-
-        function showTerminal() {
-            document.getElementById('error-msg').classList.add('hidden');
-            document.getElementById('login-screen').classList.add('hidden');
-            document.getElementById('terminal-screen').classList.remove('hidden');
         }
 
         function showError(text) {
@@ -173,7 +194,6 @@
             errEl.classList.remove('hidden');
         }
 
-        // Запуск при загрузке страницы
         window.onload = checkUrlParams;
     </script>
 </body>
