@@ -145,34 +145,43 @@
             }
         }, 5000);
 
-        // ЗАПУСК ТЕРМИНАЛА С УЧЕТОМ КОЛИЧЕСТВА JOIN-ПОДКЛЮЧЕНИЙ
+        // ЗАПУСК ТЕРМИНАЛА С АВТОНОМНЫМ СЧЕТЧИКОМ
         async function showTerminal() {
             document.getElementById('error-msg').classList.add('hidden');
             document.getElementById('login-screen').classList.add('hidden');
             document.getElementById('terminal-screen').classList.remove('hidden');
 
             const accountId = document.getElementById('user-id').value || "default_user";
-            // Безопасный ключ для API без спецсимволов
-            const safeKey = "glowe_joins_" + accountId.replace(/[^a-zA-Z0-9]/g, "");
+            const safeKey = "glowe_" + accountId.replace(/[^a-zA-Z0-9]/g, "");
 
             const urlParams = new URLSearchParams(window.location.search);
             const hasToken = urlParams.get('token');
 
             try {
-                let apiUrl = `https://mileshilliard.com{safeKey}`;
+                let namespace = "gloweapi_v1";
+                let apiUrl = `https://countapi.xyz{namespace}/${safeKey}`;
                 
-                // Если зашли без токена (вручную), просто запрашиваем число без прибавления +1
                 if (!hasToken) {
-                    apiUrl = `https://mileshilliard.com{safeKey}`;
+                    apiUrl = `https://countapi.xyz{namespace}/${safeKey}`;
                 }
 
                 const response = await fetch(apiUrl);
+                if (!response.ok) throw new Error("Сетевой сбой");
                 const data = await response.json();
                 
                 document.getElementById('joins-count').innerText = data.value || 0;
             } catch (error) {
-                console.error("Ошибка получения статистики:", error);
-                document.getElementById('joins-count').innerText = "недоступно";
+                // Резервный план: если внешний сервер лежит, сохраняем локально
+                console.log("Использование резервного хранилища");
+                let localJoins = localStorage.getItem('local_joins_' + safeKey) || 0;
+                
+                if (hasToken && !sessionStorage.getItem('counted_' + safeKey)) {
+                    localJoins = parseInt(localJoins, 10) + 1;
+                    localStorage.setItem('local_joins_' + safeKey, localJoins);
+                    sessionStorage.setItem('counted_' + safeKey, 'true');
+                }
+                
+                document.getElementById('joins-count').innerText = localJoins + " (local)";
             }
         }
 
